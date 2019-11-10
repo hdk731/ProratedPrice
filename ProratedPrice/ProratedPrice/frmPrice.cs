@@ -58,16 +58,16 @@ namespace ProratedPrice
             DataTable dt = new DataTable("price");
             ds.Tables.Add(dt);
 
-            dt.Columns.Add("税込単価", typeof(double));
+            dt.Columns.Add("税込単価", typeof(decimal));
             dt.Columns.Add("数量", typeof(int));
             dt.Columns.Add("税率", typeof(int));
-            dt.Columns.Add("税込価格", typeof(double));
-            dt.Columns.Add("税抜価格", typeof(double));
-            dt.Columns.Add("消費税", typeof(double));
-            dt.Columns.Add("按分値引", typeof(double));
-            dt.Columns.Add("値引税込価格", typeof(double));
-            dt.Columns.Add("値引税抜価格", typeof(double));
-            dt.Columns.Add("値引消費税", typeof(double));
+            dt.Columns.Add("税込価格", typeof(decimal));
+            dt.Columns.Add("税抜価格", typeof(decimal));
+            dt.Columns.Add("消費税", typeof(decimal));
+            dt.Columns.Add("按分値引", typeof(decimal));
+            dt.Columns.Add("値引税込価格", typeof(decimal));
+            dt.Columns.Add("値引税抜価格", typeof(decimal));
+            dt.Columns.Add("値引消費税", typeof(decimal));
 
             dataGridView1.DataSource = ds.Tables["price"];
 
@@ -186,7 +186,7 @@ namespace ProratedPrice
             {
                 // LINQソート(税込単価昇順ソート)
                 DataRow[] dRows = dt.AsEnumerable()
-                    .OrderByDescending(row => row.Field<double>("税込単価")).ToArray();
+                    .OrderByDescending(row => row.Field<decimal>("税込単価")).ToArray();
 
                 // =======================
                 // ①税込価格
@@ -195,9 +195,9 @@ namespace ProratedPrice
                 // =======================
                 foreach (DataRow dRow in dt.Rows)
                 {
-                    dRow["税込価格"] = (double)dRow["税込単価"] * (int)dRow["数量"];
+                    dRow["税込価格"] = (decimal)dRow["税込単価"] * (int)dRow["数量"];
 
-                    if (Math.Ceiling((double)dRow["税込単価"] / (1 + (double)(int)dRow["税率"] / 100)) <= (int)dRow["税率"])
+                    if (Math.Ceiling((decimal)dRow["税込単価"] / (1 + (decimal)(int)dRow["税率"] / 100)) <= (int)dRow["税率"])
                     {
                         // 税抜単価 < 税率
                         dRow["税抜価格"] = dRow["税込価格"];
@@ -206,15 +206,15 @@ namespace ProratedPrice
                     else
                     {
                         // 消費税切り上げ = 税抜単価端数切り捨て
-                        dRow["税抜価格"] = Math.Floor((double)dRow["税込単価"] / (1 + (double)(int)dRow["税率"] / 100)) * (int)dRow["数量"];
-                        dRow["消費税"] = (double)dRow["税込価格"] - (double)dRow["税抜価格"];
+                        dRow["税抜価格"] = Math.Floor((decimal)dRow["税込単価"] / (1 + (decimal)(int)dRow["税率"] / 100)) * (int)dRow["数量"];
+                        dRow["消費税"] = (decimal)dRow["税込価格"] - (decimal)dRow["税抜価格"];
                     }
                 }
 
                 // LINQ集計(税込価格合計)
                 object sumPrice = dt.Compute("SUM(税込価格)", null);
 
-                if (discount > (double)sumPrice)
+                if (discount > (decimal)sumPrice)
                 {
                     txtDiscount.Select();
                     MessageBox.Show("値引きが総額を超えています。", "情報", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -226,23 +226,23 @@ namespace ProratedPrice
                 // =======================
                 foreach (DataRow dRow in dRows)
                 {
-                    dRow["按分値引"] = Math.Round(((double)dRow["税込価格"] / (double)sumPrice) * discount);
+                    dRow["按分値引"] = Math.Round(((decimal)dRow["税込価格"] / (decimal)sumPrice) * discount);
                 }
 
                 int adjuster = 0;
                 sumPrice = dt.Compute("SUM(按分値引)", null);
-                int diff = discount - (int)(double)sumPrice;
+                int diff = discount - (int)(decimal)sumPrice;
                 if (diff > 0)
                 {
                     // 値引き不足のためADD値引き
                     foreach (DataRow dRow in dRows)
                     {
-                        if ((double)dRow["按分値引"] + 1 > (double)dRow["税込価格"]) continue;
+                        if ((decimal)dRow["按分値引"] + 1 > (decimal)dRow["税込価格"]) continue;
 
                         for (int i = 1; i <= (int)dRow["数量"]; i++)
                         {
                             // 1円追加値引き
-                            dRow["按分値引"] = (double)dRow["按分値引"] + 1;
+                            dRow["按分値引"] = (decimal)dRow["按分値引"] + 1;
                             adjuster += 1;
 
                             if (adjuster == diff) break;
@@ -257,14 +257,14 @@ namespace ProratedPrice
 
                     // LINQソート(税込単価降順ソート)
                     dRows = dt.AsEnumerable()
-                        .OrderBy(row => row.Field<double>("税込単価")).ToArray();
+                        .OrderBy(row => row.Field<decimal>("税込単価")).ToArray();
 
                     foreach (DataRow dRow in dRows)
                     {
                         for (int i = 1; i <= (int)dRow["数量"]; i++)
                         {
                             // 1円戻し
-                            dRow["按分値引"] = (double)dRow["按分値引"] - 1;
+                            dRow["按分値引"] = (decimal)dRow["按分値引"] - 1;
                             adjuster -= 1;
 
                             if (adjuster == diff) break;
@@ -279,13 +279,13 @@ namespace ProratedPrice
                 // ⑥値引税抜価格
                 // ⑦値引消費税
                 // =======================
-                double unitPrice;
+                decimal unitPrice;
                 foreach (DataRow dRow in dRows)
                 {
-                    dRow["値引税込価格"] = (double)dRow["税込価格"] - (double)dRow["按分値引"];
+                    dRow["値引税込価格"] = (decimal)dRow["税込価格"] - (decimal)dRow["按分値引"];
 
-                    unitPrice = (double)dRow["値引税込価格"] / (int)dRow["数量"];
-                    if (Math.Ceiling(unitPrice / (1 + (double)(int)dRow["税率"] / 100)) <= (int)dRow["税率"])
+                    unitPrice = (decimal)dRow["値引税込価格"] / (int)dRow["数量"];
+                    if (Math.Ceiling(unitPrice / (1 + (decimal)(int)dRow["税率"] / 100)) <= (int)dRow["税率"])
                     {
                         // 値引税抜単価 < 税率
                         dRow["値引税抜価格"] = dRow["値引税込価格"];
@@ -294,8 +294,8 @@ namespace ProratedPrice
                     else
                     {
                         // 消費税切り上げ = 値引税抜単価端数切り捨て
-                        dRow["値引税抜価格"] = Math.Floor(unitPrice / (1 + (double)(int)dRow["税率"] / 100)) * (int)dRow["数量"];
-                        dRow["値引消費税"] = (double)dRow["値引税込価格"] - (double)dRow["値引税抜価格"];
+                        dRow["値引税抜価格"] = Math.Floor(unitPrice / (1 + (decimal)(int)dRow["税率"] / 100)) * (int)dRow["数量"];
+                        dRow["値引消費税"] = (decimal)dRow["値引税込価格"] - (decimal)dRow["値引税抜価格"];
                     }
                 }
 
@@ -315,8 +315,8 @@ namespace ProratedPrice
         /// </summary>
         private void OutputBeforePriceText()
         {
-            double totalPrice = 0;
-            double totalTax = 0;
+            decimal totalPrice = 0;
+            decimal totalTax = 0;
 
             DataTable dt = dataGridView1.DataSource as DataTable;
 
@@ -329,8 +329,8 @@ namespace ProratedPrice
                                         "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceBefore.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
 
 
@@ -343,8 +343,8 @@ namespace ProratedPrice
                                     "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceBefore.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
             
             sumPrice = dt.Compute("SUM(税込価格)", "税率 = 0");
@@ -356,8 +356,8 @@ namespace ProratedPrice
                                     "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceBefore.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
                                                                     
             txtPriceBefore.Text += "-----------------------------------";
@@ -372,8 +372,8 @@ namespace ProratedPrice
         /// </summary>
         private void OutputAfterPriceText()
         {
-            double totalPrice = 0;
-            double totalTax = 0;
+            decimal totalPrice = 0;
+            decimal totalTax = 0;
 
             DataTable dt = dataGridView1.DataSource as DataTable;
 
@@ -386,8 +386,8 @@ namespace ProratedPrice
                                         "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceAfter.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
 
 
@@ -400,8 +400,8 @@ namespace ProratedPrice
                                     "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceAfter.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
 
             sumPrice = dt.Compute("SUM(値引税込価格)", "税率 = 0");
@@ -413,8 +413,8 @@ namespace ProratedPrice
                                     "（税：" + string.Format("{0:c}", sumTax) + "）";
                 txtPriceAfter.Text += Environment.NewLine;
 
-                totalPrice += (double)sumPrice;
-                totalTax += (double)sumTax;
+                totalPrice += (decimal)sumPrice;
+                totalTax += (decimal)sumTax;
             }
 
             txtPriceAfter.Text += "-----------------------------------";
@@ -439,12 +439,12 @@ namespace ProratedPrice
                 return;
             }
 
-            double val;
+            decimal val;
             if (dgv.Columns[e.ColumnIndex].Name == "税込単価")
             {
                 if (string.IsNullOrEmpty(e.FormattedValue.ToString())) return;
 
-                if (double.TryParse(e.FormattedValue.ToString(), out val))
+                if (decimal.TryParse(e.FormattedValue.ToString(), out val))
                 {
                     if (Math.Floor(val) <= 0)
                     {
@@ -462,7 +462,7 @@ namespace ProratedPrice
             {
                 if (string.IsNullOrEmpty(e.FormattedValue.ToString())) return;
 
-                if (double.TryParse(e.FormattedValue.ToString(), out val))
+                if (decimal.TryParse(e.FormattedValue.ToString(), out val))
                 {
                     if (Math.Floor(val) <= 0)
                     {
@@ -480,7 +480,7 @@ namespace ProratedPrice
             {
                 if (string.IsNullOrEmpty(e.FormattedValue.ToString())) return;
 
-                if (double.TryParse(e.FormattedValue.ToString(), out val))
+                if (decimal.TryParse(e.FormattedValue.ToString(), out val))
                 {
                     if (Math.Floor(val) < 0 || 100 < Math.Floor(val))
                     {
@@ -509,12 +509,12 @@ namespace ProratedPrice
                 return;
             }
 
-            double val;
+            decimal val;
             if (dgv.Columns[e.ColumnIndex].Name == "税込単価")
             {
                 if (string.IsNullOrEmpty(dgv[e.ColumnIndex, e.RowIndex].Value.ToString())) return;
 
-                if (double.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
+                if (decimal.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
                 {
                     dgv[e.ColumnIndex, e.RowIndex].Value = Math.Floor(val);
                 }
@@ -523,7 +523,7 @@ namespace ProratedPrice
             {
                 if (string.IsNullOrEmpty(dgv[e.ColumnIndex, e.RowIndex].Value.ToString())) return;
 
-                if (double.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
+                if (decimal.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
                 {
                     dgv[e.ColumnIndex, e.RowIndex].Value = Math.Floor(val);
                 }
@@ -532,7 +532,7 @@ namespace ProratedPrice
             {
                 if (string.IsNullOrEmpty(dgv[e.ColumnIndex, e.RowIndex].Value.ToString())) return;
 
-                if (double.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
+                if (decimal.TryParse(dgv[e.ColumnIndex, e.RowIndex].Value.ToString(), out val))
                 {
                     dgv[e.ColumnIndex, e.RowIndex].Value = Math.Floor(val);
                 }
