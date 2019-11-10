@@ -17,6 +17,8 @@ namespace ProratedPrice
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new frmPrice());
+
+            Application.DoEvents();
         }
     }
 }
