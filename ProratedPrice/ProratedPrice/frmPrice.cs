@@ -53,6 +53,7 @@ namespace ProratedPrice
             InitializeComponent();
 
             dataGridView1.AutoGenerateColumns = false;
+            dataGridView2.AutoGenerateColumns = false;
 
             DataSet ds = new DataSet();
             DataTable dt = new DataTable("price");
@@ -65,9 +66,12 @@ namespace ProratedPrice
             dt.Columns.Add("税抜価格", typeof(decimal));
             dt.Columns.Add("消費税", typeof(decimal));
             dt.Columns.Add("按分値引", typeof(decimal));
+            dt.Columns.Add("値引税込単価", typeof(decimal));
+            dt.Columns.Add("値引税抜単価", typeof(decimal));
             dt.Columns.Add("値引税込価格", typeof(decimal));
             dt.Columns.Add("値引税抜価格", typeof(decimal));
             dt.Columns.Add("値引消費税", typeof(decimal));
+            dt.Columns.Add("adjuster", typeof(int));
 
             dataGridView1.DataSource = ds.Tables["price"];
 
@@ -88,9 +92,15 @@ namespace ProratedPrice
 
             DataGridViewComboBoxColumn dgvCombobox = new DataGridViewComboBoxColumn();
             dgvCombobox = (DataGridViewComboBoxColumn)dataGridView1.Columns["税率"];
-            dgvCombobox.DataSource = dt;
+            dgvCombobox.DataSource = dt.Copy();
             dgvCombobox.ValueMember = "Value";
             dgvCombobox.DisplayMember = "Display";
+
+            DataGridViewComboBoxColumn dgvCombobox2 = new DataGridViewComboBoxColumn();
+            dgvCombobox2 = (DataGridViewComboBoxColumn)dataGridView2.Columns["税率2"];
+            dgvCombobox2.DataSource = dt.Copy();
+            dgvCombobox2.ValueMember = "Value";
+            dgvCombobox2.DisplayMember = "Display";
         }
 
         /// <summary>
@@ -165,35 +175,116 @@ namespace ProratedPrice
             }
 
             //------------------------
-            // 初期化
+            // 按分計算処理メイン１
             //------------------------
-            DataTable dt = dataGridView1.DataSource as DataTable;
+            CalculatePrice(dataGridView1, true);
+
+
+            //------------------------
+            // 按分計算処理メイン２
+            //------------------------
+            // 按分ばらし
+            SplitAndCalc();
+            CalculatePrice(dataGridView2, true);
+
+
+            // 値引き前テキスト出力
+            OutputBeforePriceText();
+            // 値引き適用テキスト出力
+            if (discount > 0) OutputAfterPriceText();
+        }
+        /// <summary>
+        /// ■按分ばらし
+        /// </summary>
+        private void SplitAndCalc()
+        {
+            DataTable origin = dataGridView1.DataSource as DataTable;
+            DataTable dt = origin.Copy();
+
+            int adjuster;
+            int spliter;
+            for (int i = 0; i <= dt.Rows.Count - 1; i++)
+            {
+                DataRow dRow = dt.Rows[i];
+                if (dRow.RowState == DataRowState.Added || dRow.RowState == DataRowState.Deleted) continue;
+
+                adjuster = Math.Abs((int)dRow["adjuster"]);
+
+                if (adjuster != 0)
+                {
+                    if ((int)dRow["数量"] == adjuster) continue;
+
+                    // 分割基準計算
+                    spliter = Math.Abs((int)dRow["数量"] - adjuster);
+
+                    DataRow dRowNew = dt.NewRow();
+                    dRowNew.ItemArray = dRow.ItemArray;
+                    dRowNew["数量"] = (int)dRow["数量"] - spliter;
+                    dRowNew["adjuster"] = adjuster;
+                    dt.Rows.Add(dRowNew);
+
+                    dRowNew = dt.NewRow();
+                    dRowNew.ItemArray = dRow.ItemArray;
+                    dRowNew["数量"] = spliter;
+                    dRowNew["adjuster"] = 0;
+                    dt.Rows.Add(dRowNew);
+
+                    dt.Rows.Remove(dRow);
+                }
+            }
+
+            // DataTableコミット
+            dt.AcceptChanges();
+
+            dataGridView2.DataSource = null;
+            dataGridView2.DataSource = dt.Copy();
+        }
+        private void CalculatePrice(object sender,bool isInitAdjuster)
+        {
+            DataGridView dgv = sender as DataGridView;
+            if (dgv == null) return;
+            
+            int discount;
+            if (!int.TryParse(txtDiscount.Text, out discount))
+            {
+                return;
+            }
+
+            //------------------------
+            // 再計算フィールド初期化
+            //------------------------
+            DataTable dt = dgv.DataSource as DataTable;
             foreach (DataRow dRow in dt.Rows)
             {
                 dRow["税込価格"] = 0;
                 dRow["税抜価格"] = 0;
                 dRow["消費税"] = 0;
                 dRow["按分値引"] = 0;
+                dRow["値引税込単価"] = 0;
+                dRow["値引税抜単価"] = 0;
                 dRow["値引税込価格"] = 0;
                 dRow["値引税抜価格"] = 0;
                 dRow["値引消費税"] = 0;
+                if (isInitAdjuster) dRow["adjuster"] = 0;
             }
-            
+
             //------------------------
             // 按分計算処理メイン
             //------------------------
             try
             {
-                // LINQソート(税込単価昇順ソート)
+                // LINQソート(税込単価降順ソート)
                 DataRow[] dRows = dt.AsEnumerable()
-                    .OrderByDescending(row => row.Field<decimal>("税込単価")).ToArray();
+                    .OrderByDescending(row => row.Field<decimal>("税込単価"))
+                    .ThenByDescending(row => row.Field<int>("adjuster"))
+                    .ToArray();
 
                 // =======================
                 // ①税込価格
                 // ②税抜価格
                 // ③消費税
                 // =======================
-                foreach (DataRow dRow in dt.Rows)
+                foreach (DataRow dRow in dRows)
                 {
                     dRow["税込価格"] = (decimal)dRow["税込単価"] * (int)dRow["数量"];
 
@@ -226,7 +317,10 @@ namespace ProratedPrice
                 // =======================
                 foreach (DataRow dRow in dRows)
                 {
-                    dRow["按分値引"] = Math.Round(((decimal)dRow["税込価格"] / (decimal)sumPrice) * discount);
+                    for (int i = 1; i <= (int)dRow["数量"]; i++)
+                    {
+                        dRow["按分値引"] = (decimal)dRow["按分値引"] + Math.Round(((decimal)dRow["税込単価"] / (decimal)sumPrice) * discount);
+                    }
                 }
 
                 int adjuster = 0;
@@ -243,6 +337,7 @@ namespace ProratedPrice
                         {
                             // 1円追加値引き
                             dRow["按分値引"] = (decimal)dRow["按分値引"] + 1;
+                            dRow["adjuster"] = (int)dRow["adjuster"] + 1;
                             adjuster += 1;
 
                             if (adjuster == diff) break;
@@ -255,7 +350,7 @@ namespace ProratedPrice
                 {
                     // 値引き過剰のためMINUS値引き
 
-                    // LINQソート(税込単価降順ソート)
+                    // LINQソート(税込単価昇順ソート)
                     dRows = dt.AsEnumerable()
                         .OrderBy(row => row.Field<decimal>("税込単価")).ToArray();
 
@@ -265,6 +360,7 @@ namespace ProratedPrice
                         {
                             // 1円戻し
                             dRow["按分値引"] = (decimal)dRow["按分値引"] - 1;
+                            dRow["adjuster"] = (int)dRow["adjuster"] - 1;
                             adjuster -= 1;
 
                             if (adjuster == diff) break;
@@ -275,17 +371,21 @@ namespace ProratedPrice
                 }
 
                 // =======================
-                // ⑤値引税込価格
-                // ⑥値引税抜価格
-                // ⑦値引消費税
+                // ⑤値引税込単価
+                // ⑥値引税込価格
+                // ⑦値引税抜単価
+                // ⑧値引税抜価格
+                // ⑨値引消費税
                 // =======================
-                decimal unitPrice;
                 foreach (DataRow dRow in dRows)
                 {
                     dRow["値引税込価格"] = (decimal)dRow["税込価格"] - (decimal)dRow["按分値引"];
 
-                    unitPrice = (decimal)dRow["値引税込価格"] / (int)dRow["数量"];
-                    if (Math.Ceiling(unitPrice / (1 + (decimal)(int)dRow["税率"] / 100)) <= (int)dRow["税率"])
+                    dRow["値引税込単価"] = Math.Floor((decimal)dRow["値引税込価格"] / (int)dRow["数量"]);
+
+                    dRow["値引税抜単価"] = Math.Floor((decimal)dRow["値引税込単価"] / (1 + (decimal)(int)dRow["税率"] / 100));
+
+                    if ((decimal)dRow["値引税抜単価"] <= (int)dRow["税率"])
                     {
                         // 値引税抜単価 < 税率
                         dRow["値引税抜価格"] = dRow["値引税込価格"];
@@ -294,21 +394,20 @@ namespace ProratedPrice
                     else
                     {
                         // 消費税切り上げ = 値引税抜単価端数切り捨て
-                        dRow["値引税抜価格"] = Math.Floor(unitPrice / (1 + (decimal)(int)dRow["税率"] / 100)) * (int)dRow["数量"];
+                        dRow["値引税抜価格"] = (decimal)dRow["値引税抜単価"] * (int)dRow["数量"];
                         dRow["値引消費税"] = (decimal)dRow["値引税込価格"] - (decimal)dRow["値引税抜価格"];
                     }
                 }
 
-                // 値引き前テキスト出力
-                OutputBeforePriceText();
-                // 値引き適用テキスト出力
-                if (discount > 0) OutputAfterPriceText();
+                // DataTableコミット
+                dt.AcceptChanges();
             }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
             }
         }
+
 
         /// <summary>
         /// ■値引き前テキスト出力
@@ -546,6 +645,10 @@ namespace ProratedPrice
         private void dataGridView1_DataError(object sender, DataGridViewDataErrorEventArgs e)
         {
             dataGridView1[e.ColumnIndex, e.RowIndex].ErrorText = "";
+        }
+        private void dataGridView2_DataError(object sender, DataGridViewDataErrorEventArgs e)
+        {
+            dataGridView2[e.ColumnIndex, e.RowIndex].ErrorText = "";
         }
         /// <summary>
         /// 【dataGridView1_CellEnter】
